@@ -1,0 +1,510 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  LENDER
+  RENTER
+  USER
+}
+
+enum TrustBadge {
+  BRONZE
+  SILVER
+  GOLD
+  DIAMOND
+}
+
+enum ItemCondition {
+  BRAND_NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  POOR
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  DISPUTED
+  LATE_RETURN
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentType {
+  RENTAL
+  SECURITY_DEPOSIT
+  LATE_FEE
+  CANCELLATION_FEE
+  REFUND
+}
+
+enum RequestStatus {
+  OPEN
+  FULFILLED
+  EXPIRED
+  CANCELLED
+}
+
+enum DamageStatus {
+  REPORTED
+  UNDER_REVIEW
+  RESOLVED
+  DISPUTED
+}
+
+enum NotificationType {
+  BOOKING_REQUEST
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  REVIEW_RECEIVED
+  MESSAGE_RECEIVED
+  RENTAL_REQUEST_MATCH
+  ITEM_RETURNED
+  DAMAGE_REPORTED
+  TRUST_SCORE_UPDATE
+  SYSTEM
+}
+
+enum DeliveryOption {
+  PICKUP_ONLY
+  DELIVERY_ONLY
+  BOTH
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  phone             String?   @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  username          String    @unique
+  bio               String?
+  avatarUrl         String?
+  coverUrl          String?
+  role              Role      @default(USER)
+  isEmailVerified   Boolean   @default(false)
+  isPhoneVerified   Boolean   @default(false)
+  isIdVerified      Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  isBanned          Boolean   @default(false)
+  banReason         String?
+  lastSeen          DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Location
+  latitude          Float?
+  longitude         Float?
+  city              String?
+  state             String?
+  country           String    @default("India")
+  pincode           String?
+  addressLine1      String?
+  addressLine2      String?
+
+  // Relations
+  items             Item[]
+  bookingsAsRenter  Booking[] @relation("RenterBookings")
+  bookingsAsLender  Booking[] @relation("LenderBookings")
+  reviewsGiven      Review[]  @relation("ReviewsGiven")
+  reviewsReceived   Review[]  @relation("ReviewsReceived")
+  sentMessages      Message[] @relation("SentMessages")
+  chats             ChatParticipant[]
+  payments          Payment[]
+  notifications     Notification[]
+  wishlistItems     Wishlist[]
+  trustScore        UserTrustScore?
+  otps              OTP[]
+  sessions          Session[]
+  refreshTokens     RefreshToken[]
+  rentalRequests    RentalRequest[]
+  damageReportsAsReporter  DamageReport[] @relation("DamageReporter")
+  damageReportsAsOwner     DamageReport[] @relation("DamageOwner")
+
+  @@map("users")
+}
+
+model UserTrustScore {
+  id                    String      @id @default(cuid())
+  userId                String      @unique
+  score                 Float       @default(50)
+  badge                 TrustBadge  @default(BRONZE)
+  completedRentals      Int         @default(0)
+  lateReturns           Int         @default(0)
+  cancellations         Int         @default(0)
+  damageReports         Int         @default(0)
+  averageRating         Float       @default(0)
+  totalReviews          Int         @default(0)
+  isEmailVerified       Boolean     @default(false)
+  isPhoneVerified       Boolean     @default(false)
+  isIdVerified          Boolean     @default(false)
+  updatedAt             DateTime    @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_trust_scores")
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  iconUrl     String?
+  color       String?
+  parentId    String?
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  items       Item[]
+
+  @@map("categories")
+}
+
+model Item {
+  id                  String          @id @default(cuid())
+  title               String
+  description         String
+  slug                String          @unique
+  ownerId             String
+  categoryId          String
+  pricePerDay         Float
+  pricePerWeek        Float?
+  pricePerMonth       Float?
+  securityDeposit     Float           @default(0)
+  condition           ItemCondition   @default(GOOD)
+  deliveryOption      DeliveryOption  @default(PICKUP_ONLY)
+  instantBooking      Boolean         @default(false)
+  isAvailable         Boolean         @default(true)
+  isActive            Boolean         @default(true)
+  isFeatured          Boolean         @default(false)
+  minRentalDays       Int             @default(1)
+  maxRentalDays       Int             @default(30)
+  totalRentals        Int             @default(0)
+  viewCount           Int             @default(0)
+  averageRating       Float           @default(0)
+  totalReviews        Int             @default(0)
+  tags                String[]
+  specifications      Json?
+  latitude            Float?
+  longitude           Float?
+  city                String?
+  state               String?
+  pincode             String?
+  addressLine         String?
+  aiSuggestedPrice    Float?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  owner               User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  category            Category        @relation(fields: [categoryId], references: [id])
+  images              ItemImage[]
+  bookings            Booking[]
+  reviews             Review[]
+  wishlistEntries     Wishlist[]
+  availabilityBlocks  AvailabilityBlock[]
+  damageReports       DamageReport[]
+
+  @@map("items")
+}
+
+model ItemImage {
+  id          String    @id @default(cuid())
+  itemId      String
+  url         String
+  publicId    String
+  altText     String?
+  isPrimary   Boolean   @default(false)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  item  Item  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@map("item_images")
+}
+
+model AvailabilityBlock {
+  id          String    @id @default(cuid())
+  itemId      String
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+  bookingId   String?
+  createdAt   DateTime  @default(now())
+
+  item    Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  booking Booking? @relation(fields: [bookingId], references: [id])
+
+  @@map("availability_blocks")
+}
+
+model Booking {
+  id                  String          @id @default(cuid())
+  itemId              String
+  renterId            String
+  lenderId            String
+  startDate           DateTime
+  endDate             DateTime
+  totalDays           Int
+  pricePerDay         Float
+  totalRentalCost     Float
+  securityDeposit     Float
+  totalAmount         Float
+  status              BookingStatus   @default(PENDING)
+  pickupAddress       String?
+  deliveryAddress     String?
+  specialInstructions String?
+  qrCodePickup        String?
+  qrCodeReturn        String?
+  pickedUpAt          DateTime?
+  returnedAt          DateTime?
+  extendedUntil       DateTime?
+  cancellationReason  String?
+  cancelledBy         String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  item                Item              @relation(fields: [itemId], references: [id])
+  renter              User              @relation("RenterBookings", fields: [renterId], references: [id])
+  lender              User              @relation("LenderBookings", fields: [lenderId], references: [id])
+  payments            Payment[]
+  reviews             Review[]
+  chat                Chat?
+  availabilityBlocks  AvailabilityBlock[]
+  damageReports       DamageReport[]
+
+  @@map("bookings")
+}
+
+model RentalRequest {
+  id            String          @id @default(cuid())
+  requesterId   String
+  categoryId    String?
+  title         String
+  description   String
+  priceRange    String?
+  startDate     DateTime
+  endDate       DateTime
+  latitude      Float?
+  longitude     Float?
+  city          String?
+  radius        Float           @default(5)
+  status        RequestStatus   @default(OPEN)
+  expiresAt     DateTime
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  requester     User      @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+
+  @@map("rental_requests")
+}
+
+model Review {
+  id          String    @id @default(cuid())
+  bookingId   String
+  itemId      String?
+  reviewerId  String
+  revieweeId  String
+  rating      Int
+  comment     String?
+  isForItem   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  booking   Booking @relation(fields: [bookingId], references: [id])
+  item      Item?   @relation(fields: [itemId], references: [id])
+  reviewer  User    @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewee  User    @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+
+  @@unique([bookingId, reviewerId, isForItem])
+  @@map("reviews")
+}
+
+model Chat {
+  id          String    @id @default(cuid())
+  bookingId   String?   @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  booking       Booking?          @relation(fields: [bookingId], references: [id])
+  participants  ChatParticipant[]
+  messages      Message[]
+
+  @@map("chats")
+}
+
+model ChatParticipant {
+  id          String    @id @default(cuid())
+  chatId      String
+  userId      String
+  lastReadAt  DateTime  @default(now())
+  joinedAt    DateTime  @default(now())
+
+  chat  Chat  @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([chatId, userId])
+  @@map("chat_participants")
+}
+
+model Message {
+  id          String    @id @default(cuid())
+  chatId      String
+  senderId    String
+  content     String?
+  imageUrl    String?
+  imagePublicId String?
+  isRead      Boolean   @default(false)
+  isDeleted   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  chat    Chat  @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender  User  @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@map("messages")
+}
+
+model Payment {
+  id                  String          @id @default(cuid())
+  bookingId           String
+  userId              String
+  razorpayOrderId     String?         @unique
+  razorpayPaymentId   String?         @unique
+  razorpaySignature   String?
+  amount              Float
+  currency            String          @default("INR")
+  type                PaymentType
+  status              PaymentStatus   @default(PENDING)
+  description         String?
+  failureReason       String?
+  refundId            String?
+  refundedAt          DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  booking   Booking @relation(fields: [bookingId], references: [id])
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@map("payments")
+}
+
+model DamageReport {
+  id              String        @id @default(cuid())
+  bookingId       String
+  itemId          String
+  reporterId      String
+  ownerId         String
+  description     String
+  beforeImages    String[]
+  afterImages     String[]
+  estimatedCost   Float?
+  status          DamageStatus  @default(REPORTED)
+  resolution      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  booking   Booking @relation(fields: [bookingId], references: [id])
+  item      Item    @relation(fields: [itemId], references: [id])
+  reporter  User    @relation("DamageReporter", fields: [reporterId], references: [id])
+  owner     User    @relation("DamageOwner", fields: [ownerId], references: [id])
+
+  @@map("damage_reports")
+}
+
+model Notification {
+  id          String            @id @default(cuid())
+  userId      String
+  type        NotificationType
+  title       String
+  message     String
+  data        Json?
+  isRead      Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Wishlist {
+  id        String    @id @default(cuid())
+  userId    String
+  itemId    String
+  createdAt DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item  Item  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+  @@map("wishlists")
+}
+
+model OTP {
+  id          String    @id @default(cuid())
+  userId      String
+  code        String
+  type        String
+  expiresAt   DateTime
+  isUsed      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("otps")
+}
+
+model Session {
+  id          String    @id @default(cuid())
+  userId      String
+  token       String    @unique
+  deviceInfo  String?
+  ipAddress   String?
+  userAgent   String?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id          String    @id @default(cuid())
+  userId      String
+  token       String    @unique
+  expiresAt   DateTime
+  isRevoked   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
